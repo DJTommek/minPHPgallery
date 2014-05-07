@@ -1,6 +1,12 @@
 <?php
 /////////////////////////////////////////////////////////////////
 //                         SETTINGS START                      //
+//path, where images will be. Examples:
+// ./               <- folder, where is this file (default)
+// ./path/to/folder <- folder and images from "to" cann't be loaded
+// /                <- root from hosting/computer *
+// /usr             <- folder "bla" which is in situated in root  
+define('PATH', './'); //DO NOT EDIT NOW!
 //allowed extension to images
 $imgEx = array('jpg', 'jpeg', 'png');
 //  allowed extensions to video files
@@ -8,6 +14,19 @@ $videoEx = array('mp4', 'ogv', 'webm', 'avi', 'flv', '3gp', 'mkv');
 //  allowed extensions to video files showed in tag <video>
 //  NOTE: change only if you are sure what you doing!
 $videoExPlay = array('mp4', 'ogv', 'webm');
+//  allowed extensions to txt files
+//@TEXT $textEx = array('txt', 'css',  'js', 'php');
+//  IMPORTANT: how the files will be loaded:
+//  true:
+//    - PHP
+//    - slower but usually without problems with permissions
+//    - you have to set permissions to "Owner" (usually): files READ and to parent folders READ and EXECUTE
+//    - can't be used for VIDEO
+// false: 
+//    - HTML 
+//    - faster, but you have to setup minimum permissions 
+//    - you have to set permissions to "Others": files READ and to parent folders READ and EXECUTE
+define('IGNORE_PERM', false);
 //  date format
 define('DATE_FORMAT','d.m.Y H:i:s');
 //  thousands separator
@@ -16,7 +35,7 @@ define('THOUSANDS_SEP', ' ');
 define('DECIMAL_SEP',',');
 //  how often in seconds it check for connection to this page.
 //  If connection failed, it append text about it on the top of the page
-define('CHECK_CONNECTION', 10); //0 = off
+define('CHECK_CONNECTION', 0); //0 = off
 //  allow to enable presentation
 define('PRES_ENABLED', true);
 //  default time of presentation (move to another file)
@@ -25,7 +44,7 @@ define('PRES_DEFAULT', 7);
 define('PRES_ON_END_TO_START', true);
 //translation
  $text = array(
- 'title'               => 'Fotogalerie - NSA210',
+ 'title'               => 'MC-Miners.eu - fotogalerie',
  'root'                => 'Domů',
  'back'                => 'Zpět',
  'help'                => 'Nápověda',
@@ -52,10 +71,7 @@ define('PRES_ON_END_TO_START', true);
 );
 //                       SETTINGS END                          //
 /////////////////////////////////////////////////////////////////
-//if checkConnection is enabled, AJAX load this
-if(isset($_GET['check'])){
-  die(date(DATE_FORMAT, time()));
-}
+//functions
 /*
  * Create URL from given $path
  * replace ./ OR /
@@ -77,24 +93,39 @@ function filesize_formatted($path){
   $power = $size > 0 ? floor(log($size, 1024)) : 0;
   return number_format($size / pow(1024, $power), 2, DECIMAL_SEP, THOUSANDS_SEP) . ' ' . $units[$power];
 }
+//regex
+//@TEXT $allowedEx = array_merge($videoEx, $imgEx, $textEx);
 $allowedEx = array_merge($videoEx, $imgEx);
 define('RE_ALLOWED_EX',            "/^(\.\/)?.*\.(".implode('|', $allowedEx).")$/i");
 define('RE_ALLOWED_EX_VIDEO',      "/^(\.\/)?.*\.(".implode('|', $videoEx).")$/i");
 define('RE_ALLOWED_EX_VIDEO_PLAY', "/^(\.\/)?.*\.(".implode('|', $videoExPlay).")$/i");
 define('RE_ALLOWED_EX_IMG',        "/^(\.\/)?.*\.(".implode('|', $imgEx).")$/i");
+//@TEXT define('RE_ALLOWED_EX_TEXT',       "/^(\.\/)?.*\.(".implode('|', $textEx).")$/i");
+define('RE_DENY_PATH',             "/(\/\.\.)|(^((\/)|http|https|ftp))/i");
 $path = preg_replace("(//)", "/", $_GET['path']);
 $_GET['pres'] = intval($_GET['pres']);
 //trying to get closer to root / OR ../
-if(preg_match("((\.\.)|(^\/))", $path)){
+if(preg_match(RE_DENY_PATH, $path) || preg_match(RE_DENY_PATH, $_GET['img'])){
   header('HTTP/1.1 301 Moved Permanently');
-  header('Location: '.dirname($_SERVER["PHP_SELF"]));
+  header('Location: '.$_SERVER["PHP_SELF"]);
   header('Connection: close');
 }
+//if checkConnection is enabled, AJAX load this
+if(isset($_GET['check'])){
+  die(date(DATE_FORMAT, time()));
+}
+//load img via PHP (if PERM_IGNORE) 
+if(isset($_GET['img'])){
+  header('Content-Type: image/jpeg');
+  die(readfile($_GET['img']));
+}
+
 ?>
 <!doctype html>
 <html lang="cs">
 <head>
   <meta charset="utf-8">
+  <meta name=viewport content="width=device-width, initial-scale=1">
   <title><?php echo $text['title']; ?></title>
   <link rel="shortcut icon" href="http://www.iconj.com/ico/5/h/5h27ozzzv3.ico" type="image/x-icon" />
 </head>
@@ -109,6 +140,7 @@ if($path != '' && !preg_match("(\/$)", $path)){
 else{
   define('IS_FOLDER', true);
   echo '<script>var IS_FOLDER = true;</script>';
+  $id = 1;
 }
 ?>
 <style>
@@ -181,6 +213,10 @@ b.key{
   padding: 0 2px;
   border: 1px solid grey;
 }
+a:target{
+  background-color: rgb(224,224,224);
+}
+
 </style>
 <?php if(isset($_GET['help'])){ ?>
 <style>
@@ -199,7 +235,7 @@ h2{
   text-align: center;
 }
 </style>
-  <h2>minPHPgallery v0.4 <b class="key">SHIFT</b>+<b class="key">H</b></h2>
+  <h2>minPHPgallery v0.5 <b class="key">SHIFT</b>+<b class="key">H</b></h2>
   <div class="part">
     <h3>Vysvětlivky:</h3>
     <ul>
@@ -233,14 +269,15 @@ h2{
         <tr><td>&nbsp;</td><td><a href="#">2014-02-18 16.50.27.jpg/</a><td>1.18 MB</td></td><td>72605</td><td>28.04.2014 11:07:33</td></tr>
       </table>
     <p>
-      Takto vypadá struktura složek a souborů. Na každý text, který je modrý, je možné kliknout. Text který je tmavě modrou barvou, již byl navštíven.<br>
-      Pokud se jedná o složku, je před ní šipečka ↳. Pokud tam není, jedná se o soubor.
+      Takto vypadá struktura složek (šipečka před názvem) a souborů (šipečka není).<br>
+      Na každý text, který je modrý, je možné kliknout nebo vybrat pomocí kláves <b class="key">↑</b> a <b class="key">↑</b>. Pro rychlý přesun nahoru můžeš použít klávesu <b class="key">Home</b> (zmáčkni 2x a označí se složka "Domů") případně <b class="key">End</b> pro přesun dolů. Stisknutím klávesy <b class="key">Enter</b> se otevře vybraná složka/soubor.<br>
+      Text který je tmavě modrou barvou, již byl navštíven.
     </p>
   </div>
   <div class="part">
     <h3>Filtr</h3>
     <p>
-      Seznam souborů a složek lze jednoduše filtrovat, stačí začít psát písmena, číslice znaky či cokoliv jiného. Text, napsaný vpravo nahoře a nevyhovuje napsanému filtru se skryje. Pro zrušení filtru stačí stisknout klávesu <b class="key">ESC</b>
+      Seznam souborů a složek lze jednoduše filtrovat, stačí začít psát písmena, číslice znaky či cokoliv jiného. Text, napsaný vpravo nahoře a nevyhovuje napsanému filtru se skryje. Pro zrušení filtru stačí 2x stisknout klávesu <b class="key">ESC</b>
     </p>
   </div>
   <div class="part">
@@ -292,32 +329,32 @@ h2{
     <h3>Prezentace</h3>
     <p>
       Prohlížení souborů lze zjednodušit i spuštěním automatické prezentace kliknutím na
-      <a href="#">Zapnout prezentaci</a> nebo stiskem klávesy <b class="key">SHIFT</b>+<b class="key">P</b>.
+      <a href="#">Zapnout prezentaci</a> nebo stiskem klávesy <b class="key">SPACE</b> (mezerník).
     </p>
     <p>
       Lze také změnit dobu, než se posune na další soubor pomocí kláves <b class="key">↑</b> a <b class="key">↓</b>.
     </p>
   </div>
   <div class="part">
-    Kód je dostupný na <a href="https://github.com/DJTommek/minPHPgallery/" target="_blank" title="Kód">GitHub.com</a>.
+    Kód, seznam změn i další informace jsou dostupné na <a href="https://github.com/DJTommek/minPHPgallery/" target="_blank" title="Kód">GitHub.com</a>.
   </div>
   <div class="part">
     <h3>ToDo</h3>
     <p>
-     Co se plánuje do nové verze, seřazeno podle důležitosti:
+     Co se plánuje do nové verze. Hvězdička označuje že se na tom pracuje. Seřazeno podle důležitosti:
     </p>
     <ul>
       <li>blacklist složek (souborů?)</li>
-      <li>zobrazit textové soubory (včetně možnosti filtrování řádku)</li>
+      <li>nezobrazovat soubory/složky ve kterých nejsou práva</li>
       <li>v prezentaci přeskočit soubory, které nejsou obrázky (videa)</li>
-      <li>umožnit ve struktuře obrázků posun pomocí šipek (nahoru, dolů) a enter pro vybrání složky/obrázku</li>
-      <li>udělat možnost mít script jinde než obrázky</li>
-      <li>udělat to FTP friendly (prohlížení souborů na jiném hostingu než aktuálním)</li>
+      <li>*udělat možnost mít script jinde než obrázky</li>
+      <li>udělat to FTP friendly (prohlížení souborů na jiném hostingu než aktuálním) <i>v daleké budoucnosti</i></li>
     </ul>
   </div>
 <?php
 }
 else{
+  echo '<div id="head">';
 //if connection is not avaiable, this will be show
 if(CHECK_CONNECTION > 0){
   echo '<h2 id="checkConnection">'.$text['errorCheckConnectionFailed'].' <span></span></h2>';
@@ -335,7 +372,7 @@ if(CHECK_CONNECTION > 0){
       else{
         $class = '';
       }
-      echo '<a href="?path=" id="buttonFolderRoot" '.$class.' onClick="window.open(this.href, \'_self\');">'.$text['root'].'</a> / ';
+      echo '<a id="'.$id++.'" href="?path=" id="buttonFolderRoot" '.$class.' onClick="window.open(this.href, \'_self\');">'.$text['root'].'</a> / ';
     }
     if($key > 0){
       $pathToFolderArray = array_slice($pathArray, 0, $key);
@@ -347,10 +384,10 @@ if(CHECK_CONNECTION > 0){
         $minus = 1;
       }
       if($key == (count($pathArray) - $minus)){ //move back
-        echo '<a href="'.makeUrl($pathToFolder.'/').'" class="buttonFolderBack" onClick="window.open(this.href, \'_self\');">'.end($pathToFolderArray).'</a> / ';
+        echo '<a id="'.$id++.'" href="'.makeUrl($pathToFolder.'/').'" class="buttonFolderBack" onClick="window.open(this.href, \'_self\');">'.end($pathToFolderArray).'</a> / ';
       }
       else{
-        echo '<a href="'.makeUrl($pathToFolder.'/').'">'.end($pathToFolderArray).'</a> / ';
+        echo '<a id="'.$id++.'" href="'.makeUrl($pathToFolder.'/').'">'.end($pathToFolderArray).'</a> / ';
       }
     }
   }
@@ -366,20 +403,24 @@ if(CHECK_CONNECTION > 0){
       die($text['doesnotExistsFile']);
     }
   }
+  echo '<script>var firstFile = '.$id.'</script>';
 ////////////////////////////////////////////
 //            file browsing               //
 ////////////////////////////////////////////
   if(IS_FOLDER == false){
 ?>
 <style>
-body{
+#head{
   margin: 0 auto;
   text-align: center;
 }
+code{
+  text-align: left;
+}
 img, video{
-  max-width: 100%;
-  max-height: 100%;
-  margin: 5px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
 }
 #pres input[type=number]{
   width: 38px;
@@ -420,12 +461,12 @@ img, video{
     }
     $pathArray = explode("/", $path);
     if(count($pathArray) == 1){ //file in root
-      $allFiles = glob('*.*');
-    }
+      $allFiles = glob(PATH.'*.*');
+    }                  
     else{
       $pathToFolderArray = array_slice($pathArray, 0, (count($pathArray) - 1));
       $pathToFolder = implode("/", $pathToFolderArray);
-      $allFiles = glob('./'.$pathToFolder.'/*.*');
+      $allFiles = glob(PATH.$pathToFolder.'/*.*');
     }
     $files = array();
     foreach($allFiles as $key=>$value) {
@@ -434,6 +475,7 @@ img, video{
       }
     }
     if(is_array($files)){
+      natcasesort($files);
       $navigation = '';
       $filesCount = count($files);
       foreach($files as $key=>$value){
@@ -496,9 +538,17 @@ img, video{
       }
     }
     echo $navigation;
+    echo '</div>'; //end of header div
      //print image
     if(preg_match(RE_ALLOWED_EX_IMG, $path)){
-      echo '<a href="'.$path.'" target="_blank" id="buttonImageOpen" onClick="window.open(this.href, \'_blank\');"><img src="'.$path.'"></a><br>';
+      if(IGNORE_PERM){
+        $pathToImg = '?img='.$path; 
+      }
+      else{
+        $pathToImg = $path; 
+      }
+      echo '<a href="'.$pathToImg.'" id="buttonImageOpen" onClick="window.open(this.href, \'_blank\');"></a>'; //open via shortcut
+      echo '<a href="'.$pathToImg.'" target="_blank"><img src="'.$pathToImg.'"></a>'; //open via direct click
     }
     //print video
     elseif(preg_match(RE_ALLOWED_EX_VIDEO, $path)){
@@ -511,6 +561,22 @@ img, video{
       }
       echo '<br><a href="'.$path.'">Stáhnout</a> video.';
     }
+    //print text
+    /* @TEXT 
+    elseif(preg_match(RE_ALLOWED_EX_TEXT, $path)){
+      $fileContent = file($path);
+      if(count($fileContent) == 0){
+        echo '<i>Soubor je prázdný</i>';
+      }
+      else{
+        echo '<code>';
+        foreach ($fileContent as $key => $value) {
+           echo '<span>'.nl2br(str_replace(" ", "&nbsp;", htmlspecialchars($value))).'</span>';           
+        }
+        echo '</code>';
+      }
+    }
+    */
     else{
       echo $text['noAllowedFile'].' '.implode(", ", $imgEx);
     }
@@ -519,8 +585,9 @@ img, video{
 ////////////////////////////////////////////
 //            folders browsing            //
 ////////////////////////////////////////////
+    echo '</div>'; //end of header div    
     //load all folders in actual folder
-    $folders = glob('./'.$path.'*', GLOB_ONLYDIR);
+    $folders = glob(PATH.$path.'*', GLOB_ONLYDIR);
     if($path != ''){
       echo '&nbsp;↳ &nbsp;&nbsp;/ <a href="?path=" id="buttonFolderRoot">'.$text['root'].'</a><br>';
       $pathToFolderArray = array_slice($pathArray, 0, $key-1);
@@ -533,36 +600,42 @@ img, video{
     }
     echo '<hr>';
     //load all files in folder
-    $allFiles = glob('./'.$path.'*.*');
+    $allFiles = glob(PATH.$path.'*.*');
     $files = array();
-    //filter files by RE_ALLOWED_EX
-    foreach ($allFiles as $key=>$value) {
-      if(preg_match(RE_ALLOWED_EX, $value)){
-        $files[] = $value;
+    if(count($allFiles) > 0 && $allFiles[0] != ''){  //bug in GLOB (no files = array with one empty string)
+      //filter files by RE_ALLOWED_EX
+      foreach($allFiles as $key=>$value){
+        if(preg_match(RE_ALLOWED_EX, $value)){
+          $files[] = $value;
+        }
       }
     }
     $countFolders = count($folders);
     $countFiles = count($files);
-    if($countFiles == 0 && $countFolders <= 1){ //1 is always = is dot = actual folder
+    if($countFiles == 0 && ($countFolders <= 0 || $folders[0] == '')){  
       echo 'Složka je prázdná.';
     }
-    elseif($countFiles == 0 && $countFolders > 1){
+    elseif($countFiles == 0 && ($countFolders > 0 && $folders[0] != '')){
       echo '<table id="structure"><thead><tr><th>&nbsp;</th><th>Název</th></tr></thead><tbody>'."\n";
     }
     elseif($countFiles != 0){
       echo '<table id="structure"><thead><tr><th>&nbsp;</th><th>Název</th><th>Velikost</th><th>Vložil</th><th>Datum vložení</th></tr></thead><tbody>'."\n";
     }
     //print folders in actual folder
-    if($countFolders > 1){
+    if($countFolders > 0 && $folders[0] != ''){
+      natcasesort($folders);
       foreach($folders as $key=>$value){
         $pathArray = explode("/", $value);
-        echo '<tr><td>&nbsp;↳ </td><td><a href="'.makeUrl($value.'/').'">'.end($pathArray).'/</a></td><td>&nbsp;</td></tr>'."\n";
+        echo '<tr><td>&nbsp;↳ </td><td><a id="'.$id++.'" href="'.makeUrl($value.'/').'">'.end($pathArray).'/</a></td><td>&nbsp;</td></tr>'."\n";
       }
     }
-    //print files in actual folder
-    foreach($files as $key=>$value){
-      $pathArray = explode("/", $value);
-      echo '<tr><td>&nbsp;</td><td><a href="'.makeUrl($value).'">'.end($pathArray).'</a><td>'.filesize_formatted($value).'</td></td><td>'.fileowner($value).'</td><td>'.date(DATE_FORMAT, fileatime($value)).'</td></tr>'."\n";
+    if($countFiles > 0){
+      natcasesort($files);
+      //print files in actual folder
+      foreach($files as $key=>$value){
+        $pathArray = explode("/", $value);
+        echo '<tr><td>&nbsp;</td><td><a id="'.$id++.'" href="'.makeUrl($value).'">'.end($pathArray).'</a><td>'.filesize_formatted($value).'</td></td><td>'.fileowner($value).'</td><td>'.date(DATE_FORMAT, fileatime($value)).'</td></tr>'."\n";
+      }
     }
     if($countFiles > 0 || $countFolders > 1){
       echo '</tbody></table>';
@@ -579,24 +652,49 @@ if(HELP_ENABLED == true){
   echo '<div id="help">';
   if(isset($_GET['help'])){
     echo '<a href="'.makeUrl($path).'" title="Zpět na předchozí stránku" id="buttonHelp" onClick="window.open(this.href, \'_self\');">'.$text['back'].'</a>';
-
   }
   else{
     if(IS_FOLDER){
       echo '<input type="search" id="search" placeholder="Filtr souborů" onClick="filter()"/> '; //onClick because of click on X button in input
     }
+    /* @TEXT 
+    elseif(isset($fileContent)){ //filter for text files
+      echo '<input type="filterInFile" id="filterInFile" placeholder="Filtr v souboru" onClick="filterInFile()"/> '; //onClick because of click on X button in input
+    }
+    */
     echo '<a href="'.makeUrl($path).'&help" title="'.$text['help'].'" id="buttonHelp" onClick="window.open(this.href, \'_self\');">'.$text['help'].'</a>';
   }
-  echo '</div>';
+  echo '</div>'; //end of help div
 }
-/*changelog v4:
+/*changelog
+ v3:
+- image/video autoresize
+- repaired some images/folders where is char like +
+- in presentation on end of folder start from first (settings)
+- more translations
+- more key shortcuts
+ v4:
 - move on page in folder up/down if is focused in filter
 - code cleanup (js down, php up, setting top)
 - created favicon ico
 - resizing path on the top of page (sometimes filter or help was hiding this path)
 - added CHECK_CONNECTION to checking if everything is okey
+ v5:
+- added selecting in browsing in structure (up, down, home, end, enter). Filter compatible!
+- help updated
+- added load images via PHP (IGNORE_PERM in settings) 
+- fix resizing + added max-width resizing
+- fix open img in fullscreen (opened twice)
+- prepare load txt //@TEXT               
+- prepare filter in file loading //@TEXT
+- prepare load files from another folder
+- change unfocus from input filter
+- fix load empty dir
+- fix load dir, where is one file/folder
+- added natcasesort (sort by name case insensitive) 
 */
 echo '<script type="text/javascript">
+var countFiles = '.($id - 1).';
 var text = new Array();
 text["presTextMovingNext"] = "'.$text['presTextMovingNext'].'";
 text["presTextWaitOnePt1"] = "'.$text['presTextWaitOnePt1'].'";
@@ -634,14 +732,29 @@ jwerty.key('shift+left', function(){ //move -10 in album
     $('#buttonViewMoveJumpLeft').trigger("click");
   }
 });
-jwerty.key('home', function() { //move to start in album
-  if(IS_FOLDER === false){
+jwerty.key('home', function() {
+  if(IS_FOLDER === false){ //move to start in album
     $('#buttonViewMoveFirst').trigger("click");
+  }
+  else{ //move to first file in folders
+    window.location.hash = "#" + findItem('first');    
+    //window.location.hash = "#" + firstFile;
+  }
+});
+jwerty.key('home, home', function() {
+  if(IS_FOLDER === false){
+  }
+  else{ //move select to "root" link
+    window.location.hash = "#1";
   }
 });
 jwerty.key('end', function() { //move to end in album
   if(IS_FOLDER === false){
     $('#buttonViewMoveLast').trigger("click");
+  }
+  else{ //move to last file in folders
+    window.location.hash = "#" + findItem('last');    
+    //window.location.hash = "#" + countFiles;
   }
 });
 //folder browsing
@@ -659,18 +772,26 @@ jwerty.key('shift+h', function(){ //open/close help
   $('#buttonHelp').trigger("click");
 });
 jwerty.key('space', function(){ //start/stop presentation
-  $('#buttonPresentation').trigger("click");
+  if(IS_FOLDER === false){
+    $('#buttonPresentation').trigger("click");      
+  }
 });
 jwerty.key('up', function(){
   if(IS_FOLDER === false){
-    if(pres < 1){ //increase seconds in presentation (after start)
+    if(pres < 1){ //increase seconds in presentation (before start)
       $('form#pres input[type=number]').val((parseInt($('form#pres input[type=number]').val()) + 1));
     }
+  }
+  else{
+    window.location.hash = "#" + findItem('before');
   }
 });
 jwerty.key('down', function(){ //increase seconds in presentation (before start)
   if(IS_FOLDER === false){
     $('form#pres input[type=number]').val((parseInt($('form#pres input[type=number]').val()) - 1));
+  }
+  else{
+    window.location.hash = "#" + findItem('next');
   }
 });
 jwerty.key('enter', function(){ //open image in fullscreen
@@ -678,33 +799,129 @@ jwerty.key('enter', function(){ //open image in fullscreen
     $('#buttonImageOpen').trigger("click");
   }
 });
-jwerty.key('up/down', function(){ //unfocus from filter (if someone want to move in folder)
+jwerty.key('up/down', function(){ //unfocus from filter (if someone want to move select in folder)
   if(IS_FOLDER === true){
-    $("#search").blur();
+    if($("#search").is(":focus")){
+      $("#search").focusout();    
+    }
   }
+  /*@TEXT 
+  else{
+    $("#filterInFile").blur();
+  }
+  */
 });
-jwerty.key('esc', function(){ //clear filter
+jwerty.key('esc, esc', function(){ //clear filter
   if(IS_FOLDER === true){
     $("#search").blur();
     $('#search').val("");
     filter();
   }
+  /*@TEXT 
+  else{
+    $("#filterInFile").blur();
+    $('#filterInFile').val("");
+    filterInFile();
+  }
+  */
 });
 $("*").keydown(function(e){ //start filter on press some of key (three line below)
   var allowedKeys = new Array(111, 106, 186, 187, 188, 189, 190, 191, 192, 219, 221, 220, 222);
-  if((e.keyCode >= 65 && e.keyCode <= 90)//letters
-  || (e.keyCode >= 49 && e.keyCode <= 57)//number above letters
-  || (e.keyCode >= 96 && e.keyCode <= 105)//numbers on numeric keyboard
+  if((e.keyCode >= 65 && e.keyCode <= 90) //letters
+  || (e.keyCode >= 49 && e.keyCode <= 57) //number above letters
+  || (e.keyCode >= 96 && e.keyCode <= 105) //numbers on numeric keyboard
   || ($.inArray(e.keyCode,allowedKeys) > -1) //some special characters
   ){
-    $("#search").focus();
+    if(IS_FOLDER === true){
+      $("#search").focus();
+    }
+    /*@TEXT 
+    else{
+      $("#filterInFile").focus();    
+    }
+    */
   }
 });
 $(function(){
   $('#search').keyup(function(){
-    filter();
+    if($("#search").is(":focus")){
+      filter();    
+    }
   });
+  /*@TEXT 
+  $('#filterInFile').keyup(function(){
+    filterInFile();
+  });
+  */
 });
+/* 
+ * Find next/before/first/last file in structure
+ * @param: 
+ * - first
+ * - before
+ * - next
+ * - last      
+ * @return: int ID 
+ * @author: Tomáš Palider
+ */
+function findItem(action){
+  var i = 1;
+  //workaround ;)
+  if(action === 'first'){ //set as selected first file and search "next"
+    var selected = next = (firstFile - 1);
+    action = 'next';      
+  }
+  else if(action === 'last'){ //set as selected last file and search "before"
+    var selected = next = (countFiles + 1);    
+    action = 'before';      
+  }
+  else{ //load selected and search "next" or "before"
+    var selected = next = parseInt($('a:target').attr('id')); //save selected item - for last/first item  
+  }
+  if(action === 'next'){ 
+    next++;
+  }
+  if(action === 'before'){
+    next--;  
+  }
+  while("a" == "a"){ //make a loop 
+    i++;
+    if(isNaN(next)){ //no item is not selected
+      if(countFiles > firstFile){ //there is at least one item to select
+        next = firstFile;
+        break;
+      }
+      else{ //select "root"
+        next = 1;
+        break;
+      }
+    }
+    if(next > countFiles){ //last item in folder is selected
+      next = countFiles;
+      break;
+    }
+    if($('#' + next).closest("tr").css('display') == 'none'){ //filter visible items
+      if(action === 'next'){
+        next++;
+      }
+      if(action === 'before'){
+        next--;
+      }
+      if(next > countFiles){ //last file in folder is already selected
+        next = selected;
+        break;
+      }
+    }
+    else{ //next is ok
+      break;
+    }
+    if(i == 10000){ //some error?? so break
+      console.log("Too many requests...");
+      break;
+    }
+  }
+  return next;
+}
 /*
  * @author: http://vivekarora.com/blog/simple-search-filter-using-jquery/
  */
@@ -713,6 +930,7 @@ function filter(){
   console.log("filtruju");
   $("#structure tbody tr").hide();
   $("#structure tbody tr").each(function(){
+    var hiddenItems = [];
     var text = $(this).text().toLowerCase();
     if(text.indexOf(val) != -1)
     {
@@ -720,15 +938,36 @@ function filter(){
     }
   });
 }
+/*@TEXT 
+function filterInFile(){
+  var val2 = $('#filterInFile').val().toLowerCase();
+  console.log("filtruju2");
+  $("code span").hide();
+  $("code span").each(function(){
+    var text = $(this).text().toLowerCase();
+    if(text.indexOf(val2) != -1)
+    {
+      $(this).show();
+    }
+  });
+}
+*/
 /*
  * Resize img OR video to max-height - some text above image
+ * edit max width to FullPath and error about CheckConnection
  * It's called on load window and on resizing window
  * @author: Tomáš Palider
  */
 function resize(){
-  $("img, video").css( "max-height", (($( window ).height()) - 100) + " px");
-  $("#fullPath").css( "width", (($( window ).width()) - 300) + "px");
-  $("#checkConnection").css( "width", (($( window ).width()) - 300) + "px");
+  $("img, video").css("max-height", (($( window ).height()) - 100) + "px");
+  $("img, video").css("max-width", ($( window ).width()) + "px");
+  if(IS_FOLDER){ //input search is visible
+    $("#fullPath").css("width", (($( window ).width()) - 300) + "px");
+  }
+  else{
+    $("#fullPath").css("width", (($( window ).width()) - 100) + "px");  
+  }
+  $("#checkConnection").css("width", (($( window ).width()) - 300) + "px");
 }
 //presentation: edit text (countdown)
 function presEditText(left){
@@ -740,10 +979,10 @@ function presEditText(left){
   }
 }
 $(document).ready(function(){
+  console.log("ready");
   var presTmp = 0;
   var presLeft = 0;
   var CheckConnectionNext = 0;
-  console.log("ready");
   resize(); //resize image on load
   presEditText(pres); //set text to presentation
   setInterval(function(){//enable "CRON"
@@ -786,7 +1025,7 @@ $(document).ready(function(){
       }
     }
   }, 1000);
-  $( window ).resize(function(){ //if is window resized, resize image too
+  $( window ).resize(function(){ //if is window resized, resize image/path/errors too
     resize()
   });
 });
