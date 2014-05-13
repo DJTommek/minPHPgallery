@@ -309,7 +309,10 @@ if(isset($_GET['css'])){ die(); }
   <meta name=viewport content="width=device-width, initial-scale=1">
   <title><?php echo $text['title']; ?></title>
   <link rel="shortcut icon" href="http://www.iconj.com/ico/5/h/5h27ozzzv3.ico" type="image/x-icon" />
-  <link id="stylesheet" rel="stylesheet" href="?css=light" type="text/css">
+  <script>
+  document.write('<link id="stylesheet" rel="stylesheet" href="?css='+localStorage.getItem("mPg-theme")+'" type="text/css">');
+  </script>
+  
 <style>
 *{               
   padding: 0;
@@ -678,6 +681,9 @@ if(CHECK_CONNECTION > 0){
   if(IS_FOLDER == false){
 ?>
 <style>
+body{
+  text-align: center;
+}
 #head{
   margin: 0 auto;
   text-align: center;
@@ -962,6 +968,10 @@ if(HELP_ENABLED == true){
 * added version to settings (for bugreport)
 * some fix in sending bugreport
 * added sending copy to given mail
+ v0.8.1
+* fix blink light theme if is set dark theme
+* fix space under img
+* fix text align under video 
 */
 
 echo '
@@ -1301,7 +1311,7 @@ function filter(){
  * @author: Tomáš Palider
  */
 function resize(){
-  $("img, video").css("max-height", (($( window ).height()) - 100) + "px");
+  $("img, video").css("max-height", (($( window ).height()) - 75) + "px");
   $("img, video").css("max-width", ($( window ).width()) + "px");
   if(IS_FOLDER){ //input search is visible
     $("#fullPath").css("width", (($( window ).width()) - 300) + "px");
