@@ -1,4 +1,5 @@
 <?php
+define('VERSION', '0.8'); //DO NOT EDIT PLEASE!
 /////////////////////////////////////////////////////////////////
 //                         SETTINGS START                      //
 //path, where images will be. Examples:
@@ -33,8 +34,8 @@ define('THOUSANDS_SEP', ' ');
 define('DECIMAL_SEP',',');
 //  which text will be before "root"
 //  optionaly link to your website (http://example.com/). you can set only text
-define('BEFORE_PATH_TEXT','MC-Miners.eu');
-define('BEFORE_PATH_LINK','/');
+define('BEFORE_PATH_TEXT','');
+define('BEFORE_PATH_LINK','');
 //  how often in seconds it check for connection to this page.
 //  If connection failed, it append text about it on the top of the page
 define('CHECK_CONNECTION', 5); //0 = off
@@ -46,12 +47,14 @@ define('PRES_DEFAULT', 7);
 define('PRES_ON_END_TO_START', true);
 //translation
  $text = array(
- 'title'               => 'MC-Miners.eu - fotogalerie',
+ 'title'               => 'Fotogalerie',
  'root'                => 'Domů',
  'back'                => 'Zpět',
  'help'                => 'Nápověda',
+ 'bug'                 => 'Hlášení chyb',
  'doesnotExistsFolder' => 'Složka neexistuje',
  'doesnotExistsFile'   => 'Soubor neexistuje',
+ 'folderIsEmpty'       => 'Složka je prázdná',
  'noAllowedFile'       => 'Jedná se o nepovolenou příponu, není možné obrázek zobrazit.<br> Povolené přípony jsou:',
  'imgMoveFirst'        => '<|',
  'imgMoveBefore10'     => '< -10',
@@ -101,7 +104,8 @@ define('RE_ALLOWED_EX',            "/^(\.\/)?.*\.(".implode('|', $allowedEx).")$
 define('RE_ALLOWED_EX_VIDEO',      "/^(\.\/)?.*\.(".implode('|', $videoEx).")$/i");
 define('RE_ALLOWED_EX_VIDEO_PLAY', "/^(\.\/)?.*\.(".implode('|', $videoExPlay).")$/i");
 define('RE_ALLOWED_EX_IMG',        "/^(\.\/)?.*\.(".implode('|', $imgEx).")$/i");
-define('RE_DENY_PATH',             "/(\/\.\.)|(^((\/)|http|https|ftp))/i");
+define('RE_DENY_PATH',             "/(\.\.)|(^((\/)|http|https|ftp))/i");
+define('REPORT_MAIL',             'tomas@palider.cz');
 $path = preg_replace("(//)", "/", $_GET['path']);
 $_GET['pres'] = intval($_GET['pres']);
 //trying to get closer to root / OR ../
@@ -109,43 +113,205 @@ if(preg_match(RE_DENY_PATH, $path) || preg_match(RE_DENY_PATH, $_GET['img'])){
   header('HTTP/1.1 301 Moved Permanently');
   header('Location: '.$_SERVER["PHP_SELF"]);
   header('Connection: close');
-}
+  die();
+}                                                                             
 //if checkConnection is enabled, AJAX load this
 if(isset($_GET['check'])){
   die(date(DATE_FORMAT, time()));
 }
 //load img via PHP (if PERM_IGNORE)
 if(isset($_GET['img'])){
-  header('Content-Type: image/jpeg');
-  die(readfile($_GET['img']));
+  if(IGNORE_PERM){
+    if(preg_match(RE_ALLOWED_EX, $_GET['img'])){    
+      header('Content-Type: image/jpeg');
+      die(readfile(urldecode($_GET['img'])));  
+    }
+    else{
+      header('HTTP/1.1 301 Moved Permanently');
+      header('Location: '.$_SERVER["PHP_SELF"]);
+      header('Connection: close');
+      die();    
+    }
+  }
+  else{
+    header('HTTP/1.1 301 Moved Permanently');
+    header('Location: '.$_SERVER["PHP_SELF"]);
+    header('Connection: close');
+    die();    
+  }
 }
-
+//data prepared for bugreport
+$reportResult = '
+   <li>VERSION: <u>'.htmlentities(VERSION).'</u></li>
+   <li>SERVER_ADDR: <u>'.$_SERVER['SERVER_ADDR'].'</u></li>
+   <li>REQUEST_URI: <u>'.$_SERVER['REQUEST_URI'].'</u></li>
+   <li>HTTP_USER_AGENT: <u>'.$_SERVER['HTTP_USER_AGENT'].'</u></li>
+   <li>PATH: <u>'.htmlentities(PATH).'</u></li>
+   <li>$imgEx = <u>('.htmlentities(implode(", ", $imgEx)).');</u></li>
+   <li>$videoEx = <u>('.htmlentities(implode(", ", $videoEx)).');</u></li>
+   <li>$videoExPlay = <u>('.htmlentities(implode(", ", $videoExPlay)).');</u></li>
+   <li>IGNORE_PERM: <u>'.htmlentities(IGNORE_PERM).'</u></li>
+   <li>DATE_FORMAT: <u>'.htmlentities(DATE_FORMAT).'</u></li>
+   <li>THOUSANDS_SEP: <u>'.htmlentities(THOUSANDS_SEP).'</u></li>
+   <li>DECIMAL_SEP: <u>'.htmlentities(DECIMAL_SEP).'</u></li>
+   <li>CHECK_CONNECTION: <u>'.htmlentities(CHECK_CONNECTION).'</u></li>
+   <li>PRES_ENABLED: <u>'.htmlentities(PRES_ENABLED).'</u></li>
+   <li>PRES_DEFAULT: <u>'.htmlentities(PRES_DEFAULT).'</u></li>
+   <li>PRES_ON_END_TO_START: <u>'.htmlentities(PRES_ON_END_TO_START).'</u></li>
+   ';
+if(isset($_GET['report'])){
+  echo date(DATE_FORMAT, time()).' ';
+  if(!filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
+    die('Emailová adresa není platná.');
+  }
+  function mail_send($receiver_mail, $sender_name, $sender_mail, $subject, $content_text, $footer = false){
+    $content_text = '<html>'.$content_text.'</html>';
+                  //nastavení hlavičky mailu
+    $headers  = 'MIME-Version: 1.0' . "\r\n";
+    $headers .= 'Content-type: text/html; charset=UTF-8' . "\r\n";
+    $headers .= 'From: '.$sender_name.' <'.$sender_mail.'>' . "\r\n";
+    if(mail($receiver_mail, $subject, $content_text, $headers)){
+      return true;
+    }
+    else{
+      return false;
+    }
+  }
+  $mailContent = '<ul>
+   <li>Email: '.$_POST['email'].'</li>
+   <li>Type: '.$_POST['type'].'</li>
+   <li>Content: '.nl2br($_POST['content']).'</li>
+    '.$reportResult.'
+   </ul>'; 
+  if(mail_send(REPORT_MAIL, 'minPHPgallery', $_POST['email'], $_POST['type'], $mailContent)){
+    echo 'Email byl úspěšně odeslán!';
+  }
+  else{
+    echo 'Nastala chyba během odeslání emailu.';   
+  } 
+  if(mail_send($_POST['email'], 'minPHPgallery', REPORT_MAIL, $_POST['type'], $mailContent)){
+    echo '<br>Kopie na Tvůj email byla úspěšně odeslána!';
+  }
+  else{
+    echo '<br>Nastala chyba během odeslání kopie na Tvůj email.';   
+  }
+  die();
+}
+if(isset($_GET['css'])){
+  header("Content-type: text/css; charset=utf-8");
+}
+if($_GET['css'] === 'dark'){ ?>
+*{
+  background-color: black;
+  color: rgb(144,144,144);
+}
+body{
+  background-color: black;
+  color: rgb(144,144,144);
+}
+a:link{
+  color: #AA3;
+}
+a:visited{
+  color: #CCA;
+}
+#footer{
+  border-top: 1px solid rgb(144,144,144);
+  background-color: black;
+}
+#help{
+  border-bottom: 1px solid rgb(144,144,144);
+  background-color: black;
+}
+#footer, #help{
+  border-left: 1px solid rgb(144,144,144);
+  background-color: black;
+}
+a.selected,
+tr.selected{
+  background-color: rgb(48,48,48);
+  color: red;
+}
+table#structure tr.selected td{
+  background-color: rgb(48,48,48);
+  border-bottom: 1px dotted rgb(144,144,144);
+  border-top: 1px dotted rgb(144,144,144);
+}
+table#structure tr:hover td,
+table#structure tr:hover td a{
+  background-color: rgb(48,48,48);
+}
+tr.selected td a{
+  color: red;
+}
+/* help */
+.part{
+  border: 1px solid rgb(144,144,144);
+}
+/* img */
+#pres button[type=submit]{
+  color: #AA3;
+}
+<?php } if($_GET['css'] === 'light'){ ?>
+body{
+  background-color: white;
+  color: black;
+}
+a:link{
+  color: blue;
+}
+a:visited{
+  color: darkblue;
+}
+#footer{
+  border-top: 1px solid black;
+}
+#help{
+  border-bottom: 1px solid black;
+}
+#footer, #help{
+  border-left: 1px solid black;
+  background-color: white;
+}
+a.selected,
+tr.selected{
+  background-color: rgb(224,224,224);
+  color: red;
+}
+table#structure tr.selected td{
+  background-color: rgb(224,224,224);
+  border-bottom: 1px dotted black;
+  border-top: 1px dotted black;
+}
+table#structure tr:hover td{
+  background-color: rgb(224,224,224);
+}                      
+tr.selected td a{
+  color: red;
+}
+/* help */
+.part{
+  border: 1px solid black;
+}
+/* img */
+#pres button[type=submit]{
+  color: blue;
+}
+<?php 
+}
+if(isset($_GET['css'])){ die(); }
 ?>
 <!doctype html>
 <html lang="cs">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
   <meta name=viewport content="width=device-width, initial-scale=1">
   <title><?php echo $text['title']; ?></title>
   <link rel="shortcut icon" href="http://www.iconj.com/ico/5/h/5h27ozzzv3.ico" type="image/x-icon" />
-</head>
-<body>
-<?php
-echo '<script>var pres = '.$_GET['pres'].';</script>'.PHP_EOL;
-echo '<script>var CHECK_CONNECTION = '.CHECK_CONNECTION.';</script>'.PHP_EOL;
-if($path != '' && !preg_match("(\/$)", urldecode($path))){
-  define('IS_FOLDER', false);
-  echo '<script>var IS_FOLDER = false;</script>';
-}
-else{
-  define('IS_FOLDER', true);
-  echo '<script>var IS_FOLDER = true;</script>';
-  $id = 1;
-}
-?>
-
+  <link id="stylesheet" rel="stylesheet" href="?css=light" type="text/css">
 <style>
-*{
+*{               
   padding: 0;
   margin: 0;
   font-family: 'Courier New', 'Courier', 'Andale Mono', 'monospace';
@@ -153,12 +319,13 @@ else{
 body{
   max-height: 100%;
   max-width: 100%;
-  font-size: 16 px;
-  background-color: white;
+  font-size: 16px;
 }
 a:link{
   text-decoration: none;
-  color: blue;
+}
+a:visited{
+  text-decoration: none;
 }
 ul, ol{
   margin-left: 20px;
@@ -180,7 +347,7 @@ ul, ol{
   padding-left: 5px;
 }
 table#structure tr td{
-  padding: 0 6px 0 6px;
+  padding: 0 6px 0 6px;     
 }
 table#structure tr td:nth-child(3){
   text-align: right;
@@ -191,33 +358,22 @@ table#structure tr td:nth-child(4){
 table#structure tr td{
   padding: 0 6px 0 6px;
 }
-table#structure tr:hover td{
-  background-color: rgb(224,224,224);
-}
 #footer{
   bottom: 0;
-  border-top: 1px solid black;
 }
 #help{
   top: 0;
-  border-bottom: 1px solid black;
 }
 #footer, #help{
   display: block;
   position: fixed;
-  right: 0;
-  border-left: 1px solid black;
-  background-color: white;
   padding: 1px;
+  right: 0;
 }
 b.key{
   padding: 0 2px;
   border: 1px solid grey;
-}
-a.selected,
-tr.selected{
-  background-color: rgb(224,224,224);
-  color: red;
+  cursor: pointer;
 }
 table#structure tr td{
   padding-top: 1px;
@@ -225,16 +381,36 @@ table#structure tr td{
   margin-left: 30px;
 }
 table#structure tr.selected td{
-  background-color: rgb(224,224,224);
   border-bottom: 1px dotted black;
   border-top: 1px dotted black;
   padding-top: 0px;
   padding-bottom: 0px;
 }
-tr.selected td a{
-  color: red;
+/* help */
+.part{
+  margin: 5px;
+  padding: 5px;
+}
+#buttonSwitchTheme{
+  cursor: pointer;
 }
 </style>
+</head>
+<body>
+<?php
+echo '<script>var pres = '.$_GET['pres'].';</script>'.PHP_EOL;
+echo '<script>var IS_HELP = false;</script>'.PHP_EOL;
+echo '<script>var CHECK_CONNECTION = '.CHECK_CONNECTION.';</script>'.PHP_EOL;
+if(($path != '' && !preg_match("(\/$)", urldecode($path))) || isset($_GET['help'])){
+  define('IS_FOLDER', false);
+  echo '<script>var IS_FOLDER = false;</script>';
+}
+else{
+  define('IS_FOLDER', true);
+  echo '<script>var IS_FOLDER = true;</script>';
+  $id = 1;
+}
+?>
 <?php if(isset($_GET['help'])){ ?>
 <style>
 body{
@@ -243,16 +419,36 @@ body{
   text-align: justify;
   font-family: Times, 'Times New Roman', Georgia, serif;
 }
-.part{
-  border: 1px solid black;
-  margin: 5px;
-  padding: 5px;
-}
 h2{
   text-align: center;
 }
+#bugreport:target{
+  border: 2px solid red;  
+}
+#bugreport table tr td:nth-child(1){
+  width: 200px;
+}
+#bugreport table tr td:nth-child(2){
+  width: 470px;
+}
+#bugreport table tr td:nth-child(2) input[type=email],
+#bugreport table tr td:nth-child(2) input[type=text]{
+  width: 460px;
+}
+#bugreport table tr td:nth-child(2) textarea{
+  width: 462px;
+}
+#bugreport p{
+  text-align: center;
+}
+#bugreport #reportResult{
+  background-color: rgb(224,224,224);
+  text-align: center;
+  line-height: 30px;
+}
 </style>
-  <h2>minPHPgallery v0.5 <b class="key">SHIFT</b>+<b class="key">H</b></h2>
+  <script>IS_HELP = true;</script>
+  <h2>minPHPgallery v<?php echo VERSION; ?> <b class="key">SHIFT</b>+<b class="key">H</b></h2>
   <div class="part">
     <h3>Vysvětlivky:</h3>
     <ul>
@@ -356,6 +552,13 @@ h2{
     Kód, seznam změn i další informace jsou dostupné na <a href="https://github.com/DJTommek/minPHPgallery/" target="_blank" title="Kód">GitHub.com</a>.
   </div>
   <div class="part">
+    <h3>Vzhled</h3>
+    <p>
+      Úkolem této galerie je být co nejjednodušší a nejméně datově náročná, proto se zde nenachází žádné složité prvky, další obrázky, animace či cokoliv podobného.<br />
+      Díky této jednoduchosti je zde i možnost přepínat <b class="key" title="Úplně vlevo pod klávesou ESC">;</b> mezi defaultním světlým vzhledem a tmavým, který se hodí především na noční prohlížení noci.
+    </p>
+  </div>
+  <div class="part">
     <h3>ToDo</h3>
     <p>
      Co se plánuje do nové verze. Hvězdička označuje že se na tom pracuje. Seřazeno podle důležitosti:
@@ -364,10 +567,44 @@ h2{
       <li>blacklist složek (souborů?)</li>
       <li>nezobrazovat soubory/složky ve kterých nejsou práva</li>
       <li>v prezentaci přeskočit soubory, které nejsou obrázky (videa)</li>
-      <li>*udělat možnost mít script jinde než obrázky</li>
+      <li>*mít možnost umístit script jinde než obrázky</li>
       <li>FTP friendly (prohlížení souborů na jiném hostingu než aktuálním) <i>v daleké budoucnosti</i></li>
     </ul>
   </div>
+  <form class="part" id="bugreport" method="POST" action="<?php echo makeUrl($path).'&report'; ?>">
+    <h3><a href="#bugreport" title="Bug report">Hlášení chyb</a></h3>
+    <div id="reportResult"></div>
+    <p>
+     Máte-li jakékoliv problémy, návrhy, nápady či chcete napsat autorovi jen tak, použijte prosím tento formulář. Automaticky jsou zde předvyplněné údaje, které jsou pro zajištění opravy/úpravy důležité.
+    </p>
+    <table id="report">
+     <tr>
+      <td>Vlastní email</td>       
+      <td><input type="email" required name="email" placeholder="neco@mail.cz" onKeyUp="generateReport();"></td>
+     </tr>         
+     <tr>
+      <td>Typ</td>       
+      <td>
+        <label>Návrh <input type="radio" name="type" value="add" checked > </label>
+        <label>Chyba <input type="radio" name="type" value="bug"></label>
+        <label>Poděkování <input type="radio" name="type" value="thanks"></label>
+      </td>
+     </tr>         
+     <tr>
+      <td>Zpráva</td>       
+      <td><textarea id="bugContent" required name="content" placeholder="Velké díky za vytvoření této jednoduché a rychle fungující galerie!" onKeyUp="resizeTextarea(this.id); generateReport();"></textarea></td>
+     </tr>         
+    </table>    
+    <ul id="viewReport" style="display: none;">
+      <li>Email: <u id="reportEmail"></u></li>
+      <li>Type: <u id="reportType"></u></li>
+      <li>Content: <u id="reportContent"></u></li>
+      <span id="reportSettings"><?php echo $reportResult; ?></span>
+    </ul>
+    <p>
+     <button onClick="sendReport();" type="button"> Odeslat report </button>
+    </p>
+  </form>       
 <?php
 }
 else{
@@ -397,14 +634,12 @@ if(CHECK_CONNECTION > 0){
   }
   foreach($pathArray as $key=>$value){
     if($key == 0){
-/*
       if(($key == (count($pathArray) - 2)) || (IS_FOLDER == false && $key == (count($pathArray) - 1))){ //root folder is folder to move back too OR is opened file in root folder
         $class = 'buttonFolderBack';
       }
       else{
         $class = '';
       }
-*/
       echo '<a id="'.$id++.'" href="?path=" class="buttonFolderRoot '.$class.'" onClick="window.open(this.href, \'_self\');">'.$text['root'].'</a> / ';
     }
     if($key > 0){
@@ -447,9 +682,6 @@ if(CHECK_CONNECTION > 0){
   margin: 0 auto;
   text-align: center;
 }
-code{
-  text-align: left;
-}
 img, video{
   display: block;
   margin-left: auto;
@@ -465,7 +697,6 @@ img, video{
   height: auto;
   width: auto;
   font-family: 'Courier New', 'Courier', 'Andale Mono', 'monospace';
-  color: blue;
 }
 #pres button[type=submit]:hover,
 #pres button[type=submit]:active,
@@ -571,7 +802,7 @@ echo '<form method="GET" id="pres">
      //print image
     if(preg_match(RE_ALLOWED_EX_IMG, $path)){
       if(IGNORE_PERM){
-        $pathToImg = '?img='.$path;
+        $pathToImg = '?img='.urlencode($path);
       }
       else{
         $pathToImg = $path;
@@ -599,14 +830,11 @@ echo '<form method="GET" id="pres">
 //            folders browsing            //
 ////////////////////////////////////////////
     echo '</div>'.PHP_EOL; //end of header div
-    //load all folders in actual folder
-    $folders = glob(PATH.$path.'*', GLOB_ONLYDIR);
-    //load all files in folder
-    $allFiles = glob(PATH.$path.'*.*');
+    $folders = glob(PATH.$path.'*', GLOB_ONLYDIR); //load all folders in actual folder
+    $allFiles = glob(PATH.$path.'*.*'); //load all files in folder
     $files = array();
     if(count($allFiles) > 0 && $allFiles[0] != ''){  //bug in GLOB (no files = array with one empty string)
-      //filter files by RE_ALLOWED_EX
-      foreach($allFiles as $key=>$value){
+      foreach($allFiles as $key=>$value){ //filter files by RE_ALLOWED_EX
         if(preg_match(RE_ALLOWED_EX, $value)){
           $files[] = $value;
         }
@@ -615,7 +843,7 @@ echo '<form method="GET" id="pres">
     $countFolders = count($folders);
     $countFiles = count($files);
     if($countFiles == 0 && ($countFolders <= 0 || $folders[0] == '')){
-      echo 'Složka je prázdná. <br>';
+      echo $text['folderIsEmpty'].'.<br>';
     }
     elseif($countFiles == 0 && ($countFolders > 0 && $folders[0] != '')){
       echo '<table id="structure"><thead><tr><th>&nbsp;</th><th>Název</th></tr></thead><tbody>'.PHP_EOL;
@@ -624,7 +852,6 @@ echo '<form method="GET" id="pres">
       echo '<table id="structure"><thead><tr><th>&nbsp;</th><th>Název</th><th>Velikost</th><th>Vložil</th><th>Datum vložení</th></tr></thead><tbody>'.PHP_EOL;
     }
     if($path != ''){
-      //echo '&nbsp;↳ &nbsp;&nbsp;/ <a href="?path=" class="buttonFolderRoot">'.$text['root'].'</a><br>';
       $pathToFolderArray = array_slice($pathArray, 0, count($pathArray)-2);
       $pathToFolder = implode("/", $pathToFolderArray);
       echo '<tr><td>←</td><td><a id="'.$id++.'" href="'.makeUrl($pathToFolder.'/').'" class="buttonFolderBack" onClick="window.open(this.href, \'_self\');">'.$text['back'].'/</a></td>';
@@ -633,11 +860,7 @@ echo '<form method="GET" id="pres">
       }
       echo '</tr>';
     }
-    else{ //root
-      //echo '<br />'.PHP_EOL;
-    }
-    //print folders in actual folder
-    if($countFolders > 0 && $folders[0] != ''){
+    if($countFolders > 0 && $folders[0] != ''){ //print folders in actual folder
       natcasesort($folders);
       foreach($folders as $key=>$value){
         $pathArray = explode("/", $value);
@@ -649,9 +872,8 @@ echo '<form method="GET" id="pres">
       }
     }
     if($countFiles > 0){
-      natcasesort($files);
-      //print files in actual folder
-      foreach($files as $key=>$value){
+      natcasesort($files); 
+      foreach($files as $key=>$value){ //print files in actual folder
         $pathArray = explode("/", $value);
         echo '<tr><td>&nbsp;</td><td><a id="'.$id++.'" href="'.makeUrl($value).'" onClick="window.open(this.href, \'_self\');">'.end($pathArray).'</a><td>'.filesize_formatted($value).'</td></td><td>'.fileowner($value).'</td><td>'.date(DATE_FORMAT, fileatime($value)).'</td></tr>'."\n";
       }
@@ -662,11 +884,15 @@ echo '<form method="GET" id="pres">
   }
 }
 //footer & help (DO NOT CHANGE, PLEASE)
-?>
-<div id="footer">
-  <a href="http://tomas.palider.cz/" target="_blank" title="Osobní stránky">Tomáš Palider</a>
-</div>
-<?php
+echo '<div id="footer">'.PHP_EOL;
+if(isset($_GET['help'])){
+  echo '<a href="#bugreport" title="Formulář pro hlášení chyb">'.$text['bug'].'</a>'.PHP_EOL;
+}
+else{
+  echo '<a href="'.makeUrl($path).'&help#bugreport" title="'.$text['bug'].'" onClick="window.open(this.href, \'_self\');">'.$text['bug'].'</a>'.PHP_EOL;
+}
+echo '<br><a href="http://tomas.palider.cz/" target="_blank" title="Osobní stránky">Tomáš Palider</a>';
+echo '</div>'; //end of help div
 if(HELP_ENABLED == true){
   echo '<div id="help">'.PHP_EOL;
   if(isset($_GET['help'])){
@@ -678,22 +904,23 @@ if(HELP_ENABLED == true){
     }
     echo '<a href="'.makeUrl($path).'&help" title="'.$text['help'].'" class="buttonHelp" onClick="window.open(this.href, \'_self\');">'.$text['help'].'</a>'.PHP_EOL;
   }
+  echo '<span id="buttonSwitchTheme" title="Změna vzhledu" onClick="switchTheme();">&#10687;</span>'.PHP_EOL;
   echo '</div>'; //end of help div
 }
-/*changelog
- v3:
+/*@changelog
+ v0.3:
 + image/video autoresize
 * repaired some images/folders where is char like +
 + in presentation on end of folder start from first (settings)
 + more translations
 + more key shortcuts
- v4:
+ v0.4:
 * move on page in folder up/down if is focused in filter
 * code cleanup (js down, php up, setting top)
 + created favicon ico
 + resizing path on the top of page (sometimes filter or help was hiding this path)
 + added CHECK_CONNECTION to checking if everything is okey
- v5:
+ v0.5:
 + added selecting in browsing in structure (up, down, home, end, enter). Filter compatible!
 * help updated
 + added load images via PHP (IGNORE_PERM in settings)
@@ -706,7 +933,7 @@ if(HELP_ENABLED == true){
 * fix load empty dir
 * fix load dir, where is one file/folder
 + added natcasesort (sort by name case insensitive)
- v6
+ v0.6
 - code which is about load txt files (this is a gallery!)
 * reformated result HTML code (added newline with PHP_EOL)
 * reformated javascript code
@@ -716,11 +943,32 @@ if(HELP_ENABLED == true){
 + text before path (BEFORE_PATH_TEXT, BEFORE_PATH_LINK)
 + using referrer to select last selected item, not just "back"
 * updated help
+ v0.6.1
+* fix backspace in folder or file in root
+ v0.6.2
+* rewrite function moveWindow (speed, visibility)
+ v0.7
++ added php functions to js (get_html_translaction_table, htmlentities, nl2br) @author: http://phpjs.org/
++ added bugreport (in HELP) to mail
+* fixed 'backspace' key in bugreport
+* huge fix in loading nonimg files and in parent folders (thanks to bukaj55)
+ v0.8
+* changed way to load some css (as external file)
++ added theme switching (theme is saved to localstorage)
++ added shortcut ; (under ESC on czech keyboard) to switching theme
+- removed ; to autofocus into filter
+* updated help 
+* repaired loading some images, if IGNORE_PERM = true (error in missing urldecode)
+* added version to settings (for bugreport)
+* some fix in sending bugreport
+* added sending copy to given mail
 */
+
 echo '
 <script type="text/javascript">
 var referer = "'.preg_replace("/^(.+)\?/", "?", $_SERVER['HTTP_REFERER']).'";
 var countFiles = '.($id - 1).';
+var theme = "";
 var text = new Array();
 text["presTextMovingNext"] = "'.$text['presTextMovingNext'].'";
 text["presTextWaitOnePt1"] = "'.$text['presTextWaitOnePt1'].'";
@@ -739,6 +987,8 @@ a){var b=F.exec(a);b&&(b[1]=(b[1]||"").toLowerCase(),b[3]=b[3]&&new RegExp("(?:^
 (function(e,t){function a(e,t){return e===null?t==="null":e===undefined?t==="undefined":e.is&&e instanceof r?t==="element":Object.prototype.toString.call(e).toLowerCase().indexOf(t)>7}function p(e){var t,n,r,i,s,o,u,c,h;if(e instanceof p)return e;if(!a(e,"array")){e=String(e).replace(/\s/g,"").toLowerCase().match(/(?:\+,|[^,])+/g)}for(t=0,n=e.length;t<n;++t){if(!a(e[t],"array")){e[t]=String(e[t]).match(/(?:\+\/|[^\/])+/g)}o=[],r=e[t].length;while(r--){u=e[t][r];s={jwertyCombo:String(u),shiftKey:false,ctrlKey:false,altKey:false,metaKey:false};if(!a(u,"array")){u=String(u).toLowerCase().match(/(?:(?:[^\+])+|\+\+|^\+$)/g)}i=u.length;while(i--){if(u[i]==="++")u[i]="+";if(u[i]in l.mods){s[f[l.mods[u[i]]]]=true}else if(u[i]in l.keys){s.keyCode=l.keys[u[i]]}else{c=u[i].match(/^\[([^-]+\-?[^-]*)-([^-]+\-?[^-]*)\]$/)}}if(a(s.keyCode,"undefined")){if(c&&c[1]in l.keys&&c[2]in l.keys){c[2]=l.keys[c[2]];c[1]=l.keys[c[1]];for(h=c[1];h<c[2];++h){o.push({altKey:s.altKey,shiftKey:s.shiftKey,metaKey:s.metaKey,ctrlKey:s.ctrlKey,keyCode:h,jwertyCombo:String(u)})}s.keyCode=h}else{s.keyCode=0}}o.push(s)}this[t]=o}this.length=t;return this}var n=e.document,r=e.jQuery||e.Zepto||e.ender||n,i,s,o,u="keydown";if(r===n){i=function(e,t){return e?r.querySelector(e,t||r):r};s=function(e,t){e.addEventListener(u,t,false)};o=function(e,t){var i=n.createEvent("Event"),s;i.initEvent(u,true,true);for(s in t)i[s]=t[s];return(e||r).dispatchEvent(i)}}else{i=function(e,t){return r(e||n,t)};s=function(e,t){r(e).bind(u+".jwerty",t)};o=function(e,t){r(e||n).trigger(r.Event(u,t))}}var f={16:"shiftKey",17:"ctrlKey",18:"altKey",91:"metaKey"};var l={mods:{"⇧":16,shift:16,"⌃":17,ctrl:17,"⌥":18,alt:18,option:18,"⌘":91,meta:91,cmd:91,"super":91,win:91},keys:{"⌫":8,backspace:8,"⇥":9,"⇆":9,tab:9,"↩":13,"return":13,enter:13,"⌅":13,pause:19,"pause-break":19,"⇪":20,caps:20,"caps-lock":20,"⎋":27,escape:27,esc:27,space:32,"↖":33,pgup:33,"page-up":33,"↘":34,pgdown:34,"page-down":34,"⇟":35,end:35,"⇞":36,home:36,ins:45,insert:45,del:46,"delete":46,"←":37,left:37,"arrow-left":37,"↑":38,up:38,"arrow-up":38,"→":39,right:39,"arrow-right":39,"↓":40,down:40,"arrow-down":40,"*":106,star:106,asterisk:106,multiply:106,"+":107,plus:107,"-":109,subtract:109,"num-.":110,"num-period":110,"num-dot":110,"num-full-stop":110,"num-delete":110,";":186,semicolon:186,"=":187,equals:187,",":188,comma:188,".":190,period:190,"full-stop":190,"/":191,slash:191,"forward-slash":191,"`":192,tick:192,"back-quote":192,"[":219,"open-bracket":219,"\\":220,"back-slash":220,"]":221,"close-bracket":221,"'":222,quote:222,apostraphe:222}};var c=47,h=0;while(++c<106){l.keys[h]=c;l.keys["num-"+h]=c+48;++h}c=111,h=1;while(++c<136){l.keys["f"+h]=c;++h}c=64;while(++c<91){l.keys[String.fromCharCode(c).toLowerCase()]=c}var d=t.jwerty={event:function(e,t,n){if(a(t,"boolean")){var r=t;t=function(){return r}}e=new p(e);var i=0,s=e.length-1,o,u;return function(r){if(u=d.is(e,r,i)){if(i<s){++i;return}else{o=t.call(n||this,r,u);if(o===false)r.preventDefault();i=0;return}}i=d.is(e,r)?1:0}},is:function(e,t,n){e=new p(e);n=n||0;e=e[n];t=t.originalEvent||t;var r=e.length,i=false;while(r--){i=e[r].jwertyCombo;for(var s in e[r]){if(s!=="jwertyCombo"&&t[s]!=e[r][s])i=false}if(i!==false)return i}return i},key:function(t,n,r,o,u){var f=a(r,"element")||a(r,"string")?r:o,l=f===r?e:r,c=f===r?o:u;s(a(f,"element")?f:i(f,c),d.event(t,n,l))},fire:function(e,t,n,r){e=new p(e);var s=a(n,"number")?n:r;o(a(t,"element")?t:i(t,n),e[s||0][0])},KEYS:l}})(this,typeof module!=="undefined"&&module.exports?module.exports:this)
 /* localStorage -  The MIT License Copyright (c) 2014 Frantisek Preissler */
 Array.prototype.forEach||(Array.prototype.forEach=function(e,t){var n=this.length;if("function"!=typeof e)throw new TypeError;for(var r=0;r<n;r++)r in this&&e.call(t,this[r],r,this)});(function(e){e.FCache={key_prefix:"mPg-",driver:"localStorage",storage:null,init:function(){if(typeof Storage=="undefined"||typeof window[this.driver]=="undefined"){return false}this.storage=window[this.driver];return true},checkKey:function(e){if(e.search(this.key_prefix)==-1){e=[this.key_prefix,e].join("")}return e},set:function(e,t){if(!this.init())return false;e=this.checkKey(e);if(typeof t=="object"){t=JSON.stringify(t)}this.storage.setItem(e,t);return this.get(e)},get:function(e){if(!this.init())return false;e=this.checkKey(e);var t=this.storage.getItem(e);if(!t){return false}if(typeof t=="string"&&t.match(/[\[|\{].*[\]|\}]/g)){return JSON.parse(t)}return t},remove:function(e){if(!this.init())return false;e=this.checkKey(e);return this.storage.removeItem(e)},replace:function(e,t){if(!this.init())return false;e=this.checkKey(e);this.remove(e);return this.set(e,t)},setValue:function(e,t){if(!this.init())return false;e=this.checkKey(e);var n=this.get(e);if(!n){return false}for(var r in t){n[r]=t[r]}return this.replace(e,n)},getKeys:function(){if(!this.init())return new Array;return Object.keys(this.storage).filter(function(e){return/^editor\-/.test(e)})},eachItem:function(t){if(!this.init()){t(false);return}this.getKeys().forEach(function(n){t(n,e.logs.cache.get(n))})}}})(jQuery)
+/* php functions converted to js functions (get_html_translaction_table, htmlentities, nl2br) @author: http://phpjs.org/ */ 
+function get_html_translation_table(e,t){var n={},r={},i;var s={},o={};var u={},a={};s[0]="HTML_SPECIALCHARS";s[1]="HTML_ENTITIES";o[0]="ENT_NOQUOTES";o[2]="ENT_COMPAT";o[3]="ENT_QUOTES";u=!isNaN(e)?s[e]:e?e.toUpperCase():"HTML_SPECIALCHARS";a=!isNaN(t)?o[t]:t?t.toUpperCase():"ENT_COMPAT";if(u!=="HTML_SPECIALCHARS"&&u!=="HTML_ENTITIES"){throw new Error("Table: "+u+" not supported")}n["38"]="&";if(u==="HTML_ENTITIES"){n["160"]="&nbsp;";n["161"]="&iexcl;";n["162"]="&cent;";n["163"]="&pound;";n["164"]="&curren;";n["165"]="&yen;";n["166"]="&brvbar;";n["167"]="&sect;";n["168"]="&uml;";n["169"]="&copy;";n["170"]="&ordf;";n["171"]="&laquo;";n["172"]="&not;";n["173"]="&shy;";n["174"]="&reg;";n["175"]="&macr;";n["176"]="&deg;";n["177"]="&plusmn;";n["178"]="&sup2;";n["179"]="&sup3;";n["180"]="&acute;";n["181"]="&micro;";n["182"]="&para;";n["183"]="&middot;";n["184"]="&cedil;";n["185"]="&sup1;";n["186"]="&ordm;";n["187"]="&raquo;";n["188"]="&frac14;";n["189"]="&frac12;";n["190"]="&frac34;";n["191"]="&iquest;";n["192"]="&Agrave;";n["193"]="&Aacute;";n["194"]="&Acirc;";n["195"]="&Atilde;";n["196"]="&Auml;";n["197"]="&Aring;";n["198"]="&AElig;";n["199"]="&Ccedil;";n["200"]="&Egrave;";n["201"]="&Eacute;";n["202"]="&Ecirc;";n["203"]="&Euml;";n["204"]="&Igrave;";n["205"]="&Iacute;";n["206"]="&Icirc;";n["207"]="&Iuml;";n["208"]="&ETH;";n["209"]="&Ntilde;";n["210"]="&Ograve;";n["211"]="&Oacute;";n["212"]="&Ocirc;";n["213"]="&Otilde;";n["214"]="&Ouml;";n["215"]="&times;";n["216"]="&Oslash;";n["217"]="&Ugrave;";n["218"]="&Uacute;";n["219"]="&Ucirc;";n["220"]="&Uuml;";n["221"]="&Yacute;";n["222"]="&THORN;";n["223"]="&szlig;";n["224"]="&agrave;";n["225"]="&aacute;";n["226"]="&acirc;";n["227"]="&atilde;";n["228"]="&auml;";n["229"]="&aring;";n["230"]="&aelig;";n["231"]="&ccedil;";n["232"]="&egrave;";n["233"]="&eacute;";n["234"]="&ecirc;";n["235"]="&euml;";n["236"]="&igrave;";n["237"]="&iacute;";n["238"]="&icirc;";n["239"]="&iuml;";n["240"]="&eth;";n["241"]="&ntilde;";n["242"]="&ograve;";n["243"]="&oacute;";n["244"]="&ocirc;";n["245"]="&otilde;";n["246"]="&ouml;";n["247"]="&divide;";n["248"]="&oslash;";n["249"]="&ugrave;";n["250"]="&uacute;";n["251"]="&ucirc;";n["252"]="&uuml;";n["253"]="&yacute;";n["254"]="&thorn;";n["255"]="&yuml;"}if(a!=="ENT_NOQUOTES"){n["34"]="&quot;"}if(a==="ENT_QUOTES"){n["39"]="&#39;"}n["60"]="&lt;";n["62"]="&gt;";for(i in n){if(n.hasOwnProperty(i)){r[String.fromCharCode(i)]=n[i]}}return r}function htmlentities(e,t,n,r){var i=this.get_html_translation_table("HTML_ENTITIES",t),s="";e=e==null?"":e+"";if(!i){return false}if(t&&t==="ENT_QUOTES"){i["'"]="&#039;"}if(!!r||r==null){for(s in i){if(i.hasOwnProperty(s)){e=e.split(s).join(i[s])}}}else{e=e.replace(/([\s\S]*?)(&(?:#\d+|#x[\da-f]+|[a-zA-Z][\da-z]*);|$)/g,function(e,t,n){for(s in i){if(i.hasOwnProperty(s)){t=t.split(s).join(i[s])}}return t+n})}return e}function nl2br(e,t){var n=t||typeof t==="undefined"?"<br "+"/>":"<br>";return(e+"").replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g,"$1"+n+"$2")}
 ////key shortcuts
 //file browsing
 jwerty.key('left', function(){
@@ -793,21 +1043,11 @@ jwerty.key('end', function(){
 });
 //folder browsing
 jwerty.key('shift+home', function(){
-  if(IS_FOLDER){ //move to root folder
-    $('.buttonFolderRoot').trigger("click");
-  }
-  else{ //move to root folder
-    $('.buttonFolderRoot').trigger("click");
-  }
+  $('.buttonFolderRoot').trigger("click");
 });
 //common
 jwerty.key('shift+h', function(){
-  if(IS_FOLDER){ //open/close help
-    $('.buttonHelp').trigger("click");
-  }
-  else{ //open/close help
-    $('.buttonHelp').trigger("click");
-  }
+  $('.buttonHelp').trigger("click");
 });
 jwerty.key('space', function(){
   if(IS_FOLDER){
@@ -866,15 +1106,18 @@ jwerty.key('esc', function(){
   }
 });
 jwerty.key('backspace', function(){
-  if(IS_FOLDER){
-    if(!$("#search").is(":focus")){
+  console.log("backspace click");
+  if(IS_HELP != true){
+    if(IS_FOLDER){
+      if(!$("#search").is(":focus")){
+        event.preventDefault(); //browser: back
+        $('.buttonFolderBack').trigger("click");
+      }
+    }
+    else{
       event.preventDefault(); //browser: back
       $('.buttonFolderBack').trigger("click");
     }
-  }
-  else{
-    event.preventDefault(); //browser: back
-    $('.buttonFolderBack').trigger("click");
   }
 });
 jwerty.key('esc, esc', function(){
@@ -886,9 +1129,15 @@ jwerty.key('esc, esc', function(){
   else{
   }
 });
+jwerty.key('`', function(){
+  if(!$("#bugreport input[name=email]").is(":focus") && !$("#bugreport textarea[name=content]").is(":focus")){ //switch theme if not reporting bug
+    switchTheme();  
+  }
+});
+
 $("*").keydown(function(e){ //focus into search input on key press
   if(IS_FOLDER){ //only some this keys
-    var allowedKeys = new Array(111, 106, 186, 187, 188, 189, 190, 191, 192, 219, 221, 220, 222);
+    var allowedKeys = new Array(111, 106, 186, 187, 188, 189, 190, 191, 219, 221, 220, 222);
     if((e.keyCode >= 65 && e.keyCode <= 90) //letters
     || (e.keyCode >= 49 && e.keyCode <= 57) //number above letters
     || (e.keyCode >= 96 && e.keyCode <= 105) //numbers on numeric keyboard
@@ -927,13 +1176,8 @@ $.extend($.expr[':'], {
   }
 });
 /*
- * Find next/before/first/last file in structure and select it
- * @param:
- * - first
- * - before
- * - next
- * - last
- * @return: int ID
+ * Find next/before/first/last/referer file in structure and select it
+ * @return: int ID, edit item in localstorage
  * @author: Tomáš Palider
  */
 function findItem(action){
@@ -941,7 +1185,6 @@ function findItem(action){
   if(action === 'referer'){
     var next = $('a[href="'+referer+'"]').attr('id'); //get ID by previous opened folder
     if(next === undefined || next <= firstFile){ //referer is not defined OR you went to some folder
-      console.log('error in referrer: next: ' + next + ', firstFile: '+ firstFile);
       return findItem('first');
     }
     else{ //select item, which was opened before (folder)
@@ -1015,37 +1258,25 @@ function findItem(action){
   $("#"+next).closest("tr").addClass("selected");
   $("#"+next).addClass("selected");
 }
+function resizeTextarea(id){
+  var a = document.getElementById(id);
+  a.style.height = 'auto';
+  a.style.height = a.scrollHeight+'px';
+}
 /*
- * move window if item is not visible
+ * move window up/down if item is not visible
  * @author: Tomáš Palider
  */
 function moveWindow(direction){
   if($.fullyinviewport('#'+$.FCache.get('item')) == false){ //if selecting is above
-    if(direction === 'down'){
-      $(window).scrollTop(0);
+    if(direction === 'up'){
+      $(window).scrollTop($("#"+$.FCache.get("item")).offset()['top']);
     }
     else{
-      $(window).scrollTop(999999);
+      $(window).scrollTop($("#"+$.FCache.get("item")).offset()['top'] - $(window).height() + 18) //18 is height of one item    
     }
   }
-  var y = $(window).scrollTop(); //current y position on the page
-  var tmp = 0;
-  var i = 0;
-  while($.fullyinviewport('#'+$.FCache.get('item')) == false){
-    if(direction === 'down'){
-      tmp = tmp - 20;
-    }
-    else{
-      tmp = tmp + 20;
-    }
-    $(window).scrollTop(y-tmp);
-    i++;
-    if(i >= 2000){
-      console.log("some error? break!");
-      break;
-    }
-  }
-}
+} 
 /*
  * Filter text in folder structure table
  * @author: http://vivekarora.com/blog/simple-search-filter-using-jquery/
@@ -1089,8 +1320,33 @@ function presEditText(left){
     default: $('#presTextLeft').html(text['presTextWaitFiveOrMorePt1'] + " " + left + " " + text['presTextWaitFiveOrMorePt2']); break;
   }
 }
+function loadTheme(name){
+  if(name === 'dark'){
+    $('#stylesheet').attr('href', '?css=dark');
+  }
+  else{
+    $('#stylesheet').attr('href', '?css=light');
+  }
+}
+function switchTheme(){
+  if(theme === 'dark'){
+    theme = 'light';
+  }
+  else{
+    theme = 'dark';
+  }
+  $.FCache.set('theme', theme);
+  loadTheme(theme);  
+}
 $(document).ready(function(){
-  console.log("ready");
+  console.log("HTML ready");
+  if($.FCache.get('theme')){ //load saved theme (is not set, load light)
+    theme = $.FCache.get('theme');
+  }
+  else{
+    theme = 'light';
+  }
+  loadTheme(theme);
   if(IS_FOLDER){
     findItem('referer');
   }
@@ -1099,7 +1355,7 @@ $(document).ready(function(){
   var CheckConnectionNext = 0;
   resize(); //resize image on load
   presEditText(pres); //set text to presentation
-  setInterval(function(){//enable "CRON"
+  setInterval(function(){ //enable "CRON"
     //check if presentation is enabled
     if(pres > 0){
       console.log("presTmp " + presTmp);
@@ -1117,7 +1373,7 @@ $(document).ready(function(){
         }
       }
     }
-    //check, if connection avaiable (load only formated date-time from this page)
+    //check, if connection avaiable
     if(CHECK_CONNECTION > 0){
       if(CheckConnectionNext > CHECK_CONNECTION){
         CheckConnectionNext = 0;
@@ -1142,9 +1398,47 @@ $(document).ready(function(){
   $( window ).resize(function(){ //if is window resized, resize image/path/errors too
     resize()
   });
+  console.log("HTML ready");
 });
 function submit(){
   $('form#pres').submit();
+}
+$('#bugreport').change(function(){
+  generateReport();
+});
+function generateReport(){
+  $('#viewReport').css("display", "block");
+  $("#reportEmail").html(htmlentities($("#bugreport input[name=email]").val(), 'ENT_QUOTES'));
+  $("#reportType").html(htmlentities($("#bugreport input[name=type]:checked").val(), 'ENT_QUOTES'));
+  $("#reportContent").html(nl2br(htmlentities($("#bugreport textarea[name=content]").val(), 'ENT_QUOTES')));
+}
+function sendReport(){
+  if(htmlentities($("#bugreport input[name=email]").val(), 'ENT_QUOTES') && 
+  htmlentities($("#bugreport input[name=type]:checked").val(), 'ENT_QUOTES') &&
+  nl2br(htmlentities($("#bugreport textarea[name=content]").val(), 'ENT_QUOTES'))
+  ){
+    $.ajax({
+      url: "<?php echo makeUrl($path).'&report'; ?>",
+      data: {
+        email: htmlentities($("#bugreport input[name=email]").val(), 'ENT_QUOTES'),
+        type: htmlentities($("#bugreport input[name=type]:checked").val(), 'ENT_QUOTES'),
+        content: nl2br(htmlentities($("#bugreport textarea[name=content]").val(), 'ENT_QUOTES'))
+      },
+      type: "POST",
+      beforeSend: function(data){
+        console.log("Posílám");
+      },
+      complete: function(data){
+        console.log("Doposílal jsem");
+      },
+      success: function(data){
+        $("#reportResult").html(data);
+      }
+    });
+  }
+  else{
+    $("#reportResult").html("Je potřeba vyplnit všechny údaje.");  
+  }
 }
 </script>
 </body>
